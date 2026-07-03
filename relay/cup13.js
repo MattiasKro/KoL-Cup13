@@ -586,8 +586,54 @@ var Cup13 = Cup13 || {};
 
     var appInstance = new Cup13App();
 
+    // The whichitem1/2/3 <select> elements are lazy-populated by the
+    // game's own page script after our injected <script> tag has
+    // already run (it sits right before </body> and executes during
+    // parsing, before the selects get their <option>s). So instead of
+    // building the model straight away, poll until at least one select
+    // actually has options, then run the real init. This works no
+    // matter what mechanism the page uses to fill them in (deferred
+    // script, AJAX, etc.) since we're checking the actual DOM state
+    // rather than guessing at a load event.
+    var SELECTS_POLL_INTERVAL_MS = 100;
+    var SELECTS_POLL_TIMEOUT_MS = 10000;
+
+    function selectsArePopulated() {
+        for (var i = 0; i < Cup13App.SELECT_IDS.length; i++) {
+            var element = document.getElementsByName(Cup13App.SELECT_IDS[i])[0];
+            if (element && element.options && element.options.length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function waitForSelects(callback) {
+        var elapsedMs = 0;
+
+        (function poll() {
+            if (selectsArePopulated()) {
+                callback();
+                return;
+            }
+
+            elapsedMs += SELECTS_POLL_INTERVAL_MS;
+            if (elapsedMs >= SELECTS_POLL_TIMEOUT_MS) {
+                // Give up waiting rather than hang forever. init() will
+                // just find empty/no selects and no-op, same as it
+                // always has on pages where Cup13 doesn't apply.
+                callback();
+                return;
+            }
+
+            setTimeout(poll, SELECTS_POLL_INTERVAL_MS);
+        })();
+    }
+
     Cup13.init = function () {
-        appInstance.init();
+        waitForSelects(function () {
+            appInstance.init();
+        });
     };
 
     Cup13.refresh = function () {
