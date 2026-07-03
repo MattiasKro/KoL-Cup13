@@ -1,0 +1,60 @@
+/*
+ * Cup13 - base styling.
+ *
+ * Kept intentionally simple: layout and spacing only. Effect-cell
+ * background colors are set inline by cup13.ui.js since they're
+ * data-driven, not static.
+ */
+
+.cup13-container {
+    margin: 10px 0;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.cup13-row {
+    margin-bottom: 6px;
+}
+
+.cup13-search-input {
+    width: 260px;
+}
+
+.cup13-filter-select {
+    min-width: 160px;
+}
+
+.cup13-slot-section {
+    margin: 10px 0;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    display: inline-block;
+}
+
+.cup13-slot-heading {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.cup13-slot-row {
+    line-height: 1.6em;
+}
+
+.cup13-slot-label {
+    cursor: pointer;
+}
+
+.cup13-table {
+    margin-top: 10px;
+    max-width: 700px;
+}
+
+.cup13-table .tabulator-row {
+    cursor: pointer;
+}
+
+.cup13-table .tabulator-col[tabulator-field="favorite"] .tabulator-col-title,
+.cup13-table .tabulator-cell[tabulator-field="favorite"] {
+    text-align: center;
+}

@@ -1,0 +1,6 @@
+{
+    "scripts": {
+      "dev": "cp -R relay '¨/Library/Application Support/KoLmafia'"
+    }
+  }
+  

@@ -1,302 +1,601 @@
-/**
- * Cup13
- * Enhanced Cup of 13s interface for KoLMafia.
+/*
+ * Cup13 - a Tabulator-based replacement UI for the KoLMafia
+ * "Cup of 13s" IotM relay page.
  *
- * Core library.
+ * File: cup13.js
+ * Contains: BUILD_INFO, Cup13Parser, Cup13Storage, Cup13Model, Cup13App
  *
- * @author Mattias Kronberg
- * @license MIT
- *
- * https://github.com/MattiasKro/KoL-Cup13
+ * The UI layer (Cup13App's rendering + Tabulator wiring) lives in
+ * cup13.ui.js and is loaded separately.
  */
 
-"use strict";
+var Cup13 = Cup13 || {};
 
-(() => {
+(function (Cup13) {
+    "use strict";
 
-const BUILD_INFO = {
-    name: "Cup13",
-    version: "0.1.0",
-    buildDate: "2026-07-01"
-};
+    // ------------------------------------------------------------------
+    // Build info
+    // ------------------------------------------------------------------
 
-const STORAGE_KEY = "cup13.settings";
+    var BUILD_INFO = {
+        name: "Cup13",
+        version: "0.1.0",
+        buildDate: "2026-07-01"
+    };
 
-const ITEM_PATTERN =
-    /^(.*?)\s+\((\d+)\)\s+-\s+(\d+)\s+Adv\.(?:,\s*(.*))?$/;
+    Cup13.build = BUILD_INFO;
 
-const EFFECT_TYPES = {
-    STAT: "stat",
-    RUNNETH: "runneth",
-    UNKNOWN: "unknown"
-};
+    // ------------------------------------------------------------------
+    // Cup13Parser
+    //
+    // Turns the raw text of a single <option> (plus its value attribute)
+    // into an Ingredient object. Not meant to be extensible - if the
+    // in-game format changes, this parser gets a new version instead of
+    // being generalized.
+    // ------------------------------------------------------------------
 
-/**
- * Represents one Cup of 13s ingredient.
- */
-class Ingredient {
+    function Cup13Parser() {}
 
-    constructor(data) {
+    // Matches: "Item Name (123) - 5 Adv." or
+    //          "Item Name (123) - 5 Adv., 100 Muscle" or
+    //          "Item Name (123) - 5 Adv., 20 turns of Runneth Cold"
+    Cup13Parser.OPTION_PATTERN =
+        /^(.*?)\s*\((\d+)\)\s*-\s*(\d+)\s*Adv\.(?:,\s*(.+))?$/;
 
-        this.option = data.option;
-        this.value = data.value;
+    // Matches stat bonuses: "100 Muscle", "50 Mox", "150 Mys"
+    Cup13Parser.STAT_PATTERN =
+        /^(\d+)\s+(Muscle|Mysticality|Moxie|Mus|Mox|Mys)$/;
 
-        this.name = data.name;
-        this.quantity = data.quantity;
-        this.adv = data.adv;
+    Cup13Parser.STAT_NAMES = {
+        Muscle: "Muscle",
+        Mus: "Muscle",
+        Mysticality: "Mysticality",
+        Mys: "Mysticality",
+        Moxie: "Moxie",
+        Mox: "Moxie"
+    };
 
-        this.effect = data.effect;
+    // Matches runneth effects: "20 turns of Runneth Cold"
+    Cup13Parser.RUNNETH_PATTERN =
+        /^(\d+)\s+turns?\s+of\s+(Runneth\s+.+)$/;
 
-        this.favorite = false;
+    // Parses a single <option> element into an Ingredient object.
+    // Returns null if the text doesn't match the expected format.
+    Cup13Parser.prototype.parseOption = function (optionElement) {
+        var text = optionElement.textContent || optionElement.innerText || "";
+        var value = optionElement.value;
 
-        Object.freeze(this.effect);
-        Object.freeze(this);
-
-    }
-
-}
-
-/**
- * Parses HTML option elements into Ingredient objects.
- */
-class Cup13Parser {
-
-    parse(option) {
-
-        const match = ITEM_PATTERN.exec(option.text);
-
+        var match = Cup13Parser.OPTION_PATTERN.exec(text.trim());
         if (!match) {
-            throw new Error(
-                `Cup13: Unable to parse "${option.text}".`
-            );
-        }
-
-        return new Ingredient({
-
-            option,
-
-            value: option.value,
-
-            name: match[1],
-
-            quantity: Number(match[2]),
-
-            adv: Number(match[3]),
-
-            effect: this.parseEffect(match[4])
-
-        });
-
-    }
-
-    parseEffect(text) {
-
-        if (!text) {
             return null;
         }
 
-        text = text.trim();
+        var name = match[1];
+        var quantity = parseInt(match[2], 10);
+        var adv = parseInt(match[3], 10);
+        var extra = match[4] || null;
 
-        let match =
-            /^(\d+)\s+(Muscle|Mysticality|Moxie)$/i.exec(text);
+        return {
+            value: value,
+            name: name,
+            quantity: quantity,
+            adv: adv,
+            effect: this.parseEffect(extra)
+        };
+    };
 
-        if (match) {
-
-            return {
-
-                type: EFFECT_TYPES.STAT,
-
-                amount: Number(match[1]),
-
-                stat: match[2],
-
-                text
-
-            };
-
+    // Parses everything after "X Adv., " into an effect object.
+    Cup13Parser.prototype.parseEffect = function (extraText) {
+        if (!extraText) {
+            return null;
         }
 
-        match =
-            /^(\d+)\s+turns?\s+of\s+(.+)$/i.exec(text);
-
-        if (match) {
-
+        var statMatch = Cup13Parser.STAT_PATTERN.exec(extraText);
+        if (statMatch) {
+            var amount = parseInt(statMatch[1], 10);
+            var stat = Cup13Parser.STAT_NAMES[statMatch[2]];
             return {
-
-                type: EFFECT_TYPES.RUNNETH,
-
-                turns: Number(match[1]),
-
-                name: match[2],
-
-                text
-
+                type: "stat",
+                stat: stat,
+                amount: amount,
+                text: extraText
             };
+        }
 
+        var runnethMatch = Cup13Parser.RUNNETH_PATTERN.exec(extraText);
+        if (runnethMatch) {
+            var turns = parseInt(runnethMatch[1], 10);
+            var runnethName = runnethMatch[2];
+            return {
+                type: "runneth",
+                turns: turns,
+                name: runnethName,
+                text: extraText
+            };
         }
 
         return {
-
-            type: EFFECT_TYPES.UNKNOWN,
-
-            text
-
+            type: "unknown",
+            text: extraText
         };
+    };
 
+    // Parses every <option> in a <select> element into an array of
+    // Ingredient objects. Options that fail to parse are skipped rather
+    // than crashing the whole page.
+    Cup13Parser.prototype.parseSelect = function (selectElement) {
+        var ingredients = [];
+        var options = selectElement.options;
+
+        for (var i = 0; i < options.length; i++) {
+            var ingredient = this.parseOption(options[i]);
+            if (ingredient) {
+                ingredients.push(ingredient);
+            }
+        }
+
+        return ingredients;
+    };
+
+    Cup13.Parser = Cup13Parser;
+
+    // ------------------------------------------------------------------
+    // Cup13Storage
+    //
+    // Wraps a single localStorage key ("cup13.settings") holding user
+    // preferences: favorites, sort order, active filter, and active slot.
+    // Ingredient data itself is never stored here - only user settings.
+    // ------------------------------------------------------------------
+
+    function Cup13Storage(storageKey) {
+        this.storageKey = storageKey || "cup13.settings";
     }
 
-}
-
-/**
- * Handles persistence using localStorage.
- */
-class Cup13Storage {
-
-    constructor() {
-
-        this.settings = this.createDefaults();
-
-    }
-
-    createDefaults() {
-
+    Cup13Storage.DEFAULT_SETTINGS = function () {
         return {
-
-            favorites: new Set(),
-
-            sort: {
-
-                column: "name",
-
-                dir: "asc"
-
-            },
-
-            filter: "All",
-
-            slot: 1
-
+            favorites: [],
+            sort: { field: "name", direction: "asc" },
+            filter: "all",
+            search: "",
+            activeSlot: 1
         };
+    };
 
-    }
-
-    load() {
-
-        const raw =
-            localStorage.getItem(STORAGE_KEY);
+    Cup13Storage.prototype.load = function () {
+        var raw;
+        try {
+            raw = window.localStorage.getItem(this.storageKey);
+        } catch (e) {
+            return Cup13Storage.DEFAULT_SETTINGS();
+        }
 
         if (!raw) {
-
-            this.settings = this.createDefaults();
-
-            return;
-
+            return Cup13Storage.DEFAULT_SETTINGS();
         }
 
         try {
-
-            const parsed = JSON.parse(raw);
-
-            this.settings = {
-
-                favorites: new Set(
-                    parsed.favorites || []
-                ),
-
-                sort: parsed.sort || {
-
-                    column: "name",
-
-                    dir: "asc"
-
-                },
-
-                filter: parsed.filter || "All",
-
-                slot: parsed.slot || 1
-
-            };
-
+            var parsed = JSON.parse(raw);
+            return this.mergeWithDefaults(parsed);
+        } catch (e) {
+            return Cup13Storage.DEFAULT_SETTINGS();
         }
-        catch {
+    };
 
-            console.warn(
-                "Cup13: Failed to load settings."
-            );
+    // Fills in any missing fields with defaults, in case a future
+    // version adds new settings that don't exist in an older saved blob.
+    Cup13Storage.prototype.mergeWithDefaults = function (settings) {
+        var defaults = Cup13Storage.DEFAULT_SETTINGS();
+        settings = settings || {};
 
-            this.settings =
-                this.createDefaults();
-
-        }
-
-    }
-
-    save() {
-
-        const data = {
-
-            favorites: Array.from(
-                this.settings.favorites
-            ),
-
-            sort: this.settings.sort,
-
-            filter: this.settings.filter,
-
-            slot: this.settings.slot
-
+        return {
+            favorites: settings.favorites || defaults.favorites,
+            sort: settings.sort || defaults.sort,
+            filter: settings.filter || defaults.filter,
+            search: settings.search || defaults.search,
+            activeSlot: settings.activeSlot || defaults.activeSlot
         };
+    };
 
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify(data)
-        );
-
-    }
-
-    isFavorite(value) {
-
-        return this.settings
-            .favorites
-            .has(value);
-
-    }
-
-    setFavorite(value, favorite) {
-
-        if (favorite) {
-
-            this.settings
-                .favorites
-                .add(value);
-
+    Cup13Storage.prototype.save = function (settings) {
+        try {
+            window.localStorage.setItem(
+                this.storageKey,
+                JSON.stringify(settings)
+            );
+        } catch (e) {
+            // Storage may be unavailable (private browsing, quota, etc).
+            // Failing silently is acceptable here - favorites/sort just
+            // won't persist across page loads.
         }
-        else {
+    };
 
-            this.settings
-                .favorites
-                .delete(value);
+    Cup13.Storage = Cup13Storage;
 
+    // ------------------------------------------------------------------
+    // Cup13Model
+    //
+    // Holds the parsed ingredient list plus all user-facing state:
+    // favorites, sort, filter, search query, and active slot. Contains
+    // no DOM references - the model describes data, the UI describes
+    // presentation.
+    // ------------------------------------------------------------------
+
+    function Cup13Model(ingredients, storage) {
+        this.ingredients = ingredients || [];
+        this.storage = storage;
+        this.settings = storage.load();
+    }
+
+    Cup13Model.prototype.persist = function () {
+        this.storage.save(this.settings);
+    };
+
+    // --- Favorites ---------------------------------------------------
+
+    Cup13Model.prototype.isFavorite = function (value) {
+        return this.settings.favorites.indexOf(value) !== -1;
+    };
+
+    Cup13Model.prototype.toggleFavorite = function (value) {
+        var index = this.settings.favorites.indexOf(value);
+        if (index === -1) {
+            this.settings.favorites.push(value);
+        } else {
+            this.settings.favorites.splice(index, 1);
+        }
+        this.persist();
+    };
+
+    // --- Active slot ---------------------------------------------------
+
+    Cup13Model.prototype.getActiveSlot = function () {
+        return this.settings.activeSlot;
+    };
+
+    Cup13Model.prototype.setActiveSlot = function (slotNumber) {
+        this.settings.activeSlot = slotNumber;
+        this.persist();
+    };
+
+    // --- Sort ----------------------------------------------------------
+
+    Cup13Model.prototype.getSort = function () {
+        return this.settings.sort;
+    };
+
+    Cup13Model.prototype.setSort = function (field) {
+        var current = this.settings.sort;
+        if (current.field === field) {
+            current.direction = current.direction === "asc" ? "desc" : "asc";
+        } else {
+            current.field = field;
+            current.direction = "asc";
+        }
+        this.persist();
+    };
+
+    // --- Filter ----------------------------------------------------------
+
+    Cup13Model.prototype.getFilter = function () {
+        return this.settings.filter;
+    };
+
+    Cup13Model.prototype.setFilter = function (filterId) {
+        this.settings.filter = filterId;
+        this.persist();
+    };
+
+    // --- Search ----------------------------------------------------------
+
+    Cup13Model.prototype.getSearch = function () {
+        return this.settings.search;
+    };
+
+    Cup13Model.prototype.setSearch = function (query) {
+        this.settings.search = query;
+        this.persist();
+    };
+
+    // --- Filter option generation ---------------------------------------
+
+    // Builds the list of dynamic filter options based on what's actually
+    // present in the ingredient data. Always includes "All", "Has effect"
+    // and "No effect".
+    Cup13Model.prototype.buildFilterOptions = function () {
+        var options = [
+            { id: "all", label: "All" },
+            { id: "has-effect", label: "Has effect" },
+            { id: "no-effect", label: "No effect" }
+        ];
+
+        var advValues = {};
+        var statCombos = {};
+        var runnethNames = {};
+
+        this.ingredients.forEach(function (ingredient) {
+            advValues[ingredient.adv] = true;
+
+            var effect = ingredient.effect;
+            if (effect && effect.type === "stat") {
+                var statKey = effect.stat + ":" + effect.amount;
+                statCombos[statKey] = effect;
+            } else if (effect && effect.type === "runneth") {
+                runnethNames[effect.name] = true;
+            }
+        });
+
+        var advNumbers = Object.keys(advValues)
+            .map(Number)
+            .sort(function (a, b) { return a - b; });
+
+        // One option per exact Adv value.
+        advNumbers.forEach(function (adv) {
+            options.push({
+                id: "adv-exact-" + adv,
+                label: adv + " Adv"
+            });
+        });
+
+        // One "X+ Adv" option per unique threshold.
+        advNumbers.forEach(function (adv) {
+            options.push({
+                id: "adv-atleast-" + adv,
+                label: adv + "+ Adv"
+            });
+        });
+
+        // One option per unique stat + amount combination.
+        Object.keys(statCombos).sort().forEach(function (key) {
+            var effect = statCombos[key];
+            options.push({
+                id: "stat-" + key,
+                label: effect.amount + " " + effect.stat
+            });
+        });
+
+        // One option per unique Runneth effect name.
+        Object.keys(runnethNames).sort().forEach(function (name) {
+            options.push({
+                id: "runneth-" + name,
+                label: name
+            });
+        });
+
+        return options;
+    };
+
+    // Returns true if the given ingredient matches the given filter id.
+    Cup13Model.prototype.ingredientMatchesFilter = function (ingredient, filterId) {
+        if (filterId === "all") {
+            return true;
+        }
+        if (filterId === "has-effect") {
+            return !!ingredient.effect;
+        }
+        if (filterId === "no-effect") {
+            return !ingredient.effect;
+        }
+        if (filterId.indexOf("adv-exact-") === 0) {
+            var exactValue = Number(filterId.substring("adv-exact-".length));
+            return ingredient.adv === exactValue;
+        }
+        if (filterId.indexOf("adv-atleast-") === 0) {
+            var thresholdValue = Number(filterId.substring("adv-atleast-".length));
+            return ingredient.adv >= thresholdValue;
+        }
+        if (filterId.indexOf("stat-") === 0) {
+            var statKey = filterId.substring("stat-".length);
+            return !!ingredient.effect &&
+                ingredient.effect.type === "stat" &&
+                (ingredient.effect.stat + ":" + ingredient.effect.amount) === statKey;
+        }
+        if (filterId.indexOf("runneth-") === 0) {
+            var runnethName = filterId.substring("runneth-".length);
+            return !!ingredient.effect &&
+                ingredient.effect.type === "runneth" &&
+                ingredient.effect.name === runnethName;
+        }
+        return true;
+    };
+
+    // --- Search matching -------------------------------------------------
+
+    Cup13Model.prototype.ingredientMatchesSearch = function (ingredient, query) {
+        if (!query) {
+            return true;
         }
 
-        this.save();
+        var needle = query.toLowerCase();
 
+        if (ingredient.name.toLowerCase().indexOf(needle) !== -1) {
+            return true;
+        }
+        if (ingredient.effect && ingredient.effect.text.toLowerCase().indexOf(needle) !== -1) {
+            return true;
+        }
+        if (String(ingredient.adv).indexOf(needle) !== -1) {
+            return true;
+        }
+        if (String(ingredient.quantity).indexOf(needle) !== -1) {
+            return true;
+        }
+
+        return false;
+    };
+
+    // --- Combined query ----------------------------------------------------
+
+    // Returns the ingredients that should currently be displayed:
+    // filtered by search + filter, then sorted with favorites always on
+    // top, followed by the active sort field/direction.
+    Cup13Model.prototype.getVisibleIngredients = function () {
+        var self = this;
+        var filterId = this.getFilter();
+        var search = this.getSearch();
+
+        var visible = this.ingredients.filter(function (ingredient) {
+            return self.ingredientMatchesFilter(ingredient, filterId) &&
+                self.ingredientMatchesSearch(ingredient, search);
+        });
+
+        var sort = this.getSort();
+        var direction = sort.direction === "desc" ? -1 : 1;
+        var field = sort.field;
+
+        visible.sort(function (a, b) {
+            var favA = self.isFavorite(a.value) ? 0 : 1;
+            var favB = self.isFavorite(b.value) ? 0 : 1;
+            if (favA !== favB) {
+                return favA - favB;
+            }
+
+            var valueA = self.getSortValue(a, field);
+            var valueB = self.getSortValue(b, field);
+
+            if (valueA < valueB) {
+                return -1 * direction;
+            }
+            if (valueA > valueB) {
+                return 1 * direction;
+            }
+            return 0;
+        });
+
+        return visible;
+    };
+
+    Cup13Model.prototype.getSortValue = function (ingredient, field) {
+        if (field === "name") {
+            return ingredient.name.toLowerCase();
+        }
+        if (field === "quantity") {
+            return ingredient.quantity;
+        }
+        if (field === "adv") {
+            return ingredient.adv;
+        }
+        if (field === "effect") {
+            return ingredient.effect ? ingredient.effect.text.toLowerCase() : "";
+        }
+        return "";
+    };
+
+    Cup13.Model = Cup13Model;
+
+    // ------------------------------------------------------------------
+    // Cup13App
+    //
+    // Orchestrates parsing the original <select> elements, building the
+    // model, and (once cup13.ui.js is loaded) rendering the Tabulator UI.
+    // The original <select> elements are left in the DOM and kept in
+    // sync - Cup13App never removes them.
+    // ------------------------------------------------------------------
+
+    function Cup13App() {
+        this.parser = new Cup13Parser();
+        this.storage = new Cup13Storage("cup13.settings");
+        this.model = null;
+        this.selects = null;
+        this.initialized = false;
     }
 
-    toggleFavorite(value) {
+    Cup13App.SELECT_IDS = ["whichitem1", "whichitem2", "whichitem3"];
 
-        const favorite =
-            !this.isFavorite(value);
+    // Finds the three original <select> elements by name attribute
+    // (whichitem1/2/3), since the page doesn't give them ids.
+    Cup13App.prototype.findSelects = function () {
+        var selects = {};
+        for (var i = 0; i < Cup13App.SELECT_IDS.length; i++) {
+            var slotNumber = i + 1;
+            var name = "whichitem" + slotNumber;
+            var element = document.getElementsByName(name)[0];
+            if (element) {
+                selects[slotNumber] = element;
+            }
+        }
+        return selects;
+    };
 
-        this.setFavorite(
-            value,
-            favorite
-        );
+    // Sets up the model from the first available select's ingredient
+    // list. All three selects contain the same ingredient list, so we
+    // only need to parse one of them.
+    Cup13App.prototype.buildModel = function () {
+        var firstSlotKey = Object.keys(this.selects)[0];
+        var firstSelect = this.selects[firstSlotKey];
+        var ingredients = this.parser.parseSelect(firstSelect);
+        this.model = new Cup13Model(ingredients, this.storage);
+    };
 
-        return favorite;
+    // Public entry point. Safe to call multiple times - subsequent calls
+    // are no-ops unless destroy() was called first.
+    Cup13App.prototype.init = function () {
+        if (this.initialized) {
+            return;
+        }
 
-    }
+        this.selects = this.findSelects();
 
-}
+        if (Object.keys(this.selects).length === 0) {
+            // Not on the Cup of 13s page - nothing to do.
+            return;
+        }
 
- 
+        this.buildModel();
+
+        if (Cup13.UI) {
+            this.ui = new Cup13.UI(this.model, this.selects);
+            this.ui.render();
+        }
+
+        this.initialized = true;
+    };
+
+    // Re-parses the original selects and rebuilds the visible ingredient
+    // list. Useful if the underlying page data changes without a full
+    // reload (not currently expected to happen, but kept as a documented
+    // escape hatch).
+    Cup13App.prototype.refresh = function () {
+        if (!this.initialized) {
+            return;
+        }
+
+        this.buildModel();
+
+        if (this.ui) {
+            this.ui.setModel(this.model);
+            this.ui.render();
+        }
+    };
+
+    // Tears down the Tabulator UI and any event listeners it registered.
+    // The original <select> elements are left untouched.
+    Cup13App.prototype.destroy = function () {
+        if (this.ui) {
+            this.ui.destroy();
+            this.ui = null;
+        }
+        this.initialized = false;
+    };
+
+    Cup13.App = Cup13App;
+
+    // ------------------------------------------------------------------
+    // Public API
+    // ------------------------------------------------------------------
+
+    var appInstance = new Cup13App();
+
+    Cup13.init = function () {
+        appInstance.init();
+    };
+
+    Cup13.refresh = function () {
+        appInstance.refresh();
+    };
+
+    Cup13.destroy = function () {
+        appInstance.destroy();
+    };
+
+})(Cup13);
