@@ -14,5 +14,10 @@ A KoLmafia relay override that replaces the three ingredient selectors on the **
 
 ## Installation
 
-git checkout MattiasKro/KoL-Cup13
+`git checkout MattiasKro/KoL-Cup13`
+
+## Example
+
+<img width="958" height="997" alt="image" src="https://github.com/user-attachments/assets/4f70f65e-b87e-49f7-881e-1c311a7b7e18" />
+
 
