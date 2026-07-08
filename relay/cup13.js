@@ -60,6 +60,22 @@ var Cup13 = Cup13 || {};
     Cup13Parser.RUNNETH_PATTERN =
         /^(\d+)\s+turns?\s+of\s+(Runneth\s+.+)$/;
 
+    // Maps each Runneth effect name to what it actually does, per
+    // https://wiki.kingdomofloathing.com/Cup_of_13s_(Mix_and_Drink)
+    // Used to show the real bonus instead of just the effect's name.
+    Cup13Parser.RUNNETH_DETAILS = {
+        "Runneth Over": "+50% Item Drops from Monsters",
+        "Runneth On Empty": "+100% Meat from Monsters",
+        "Runneth Wild": "+100% Combat Initiative",
+        "Runneth With The Pack": "+5 to Familiar Weight",
+        "Runneth a Tight Ship": "+5 Familiar Experience Per Combat",
+        "Runneth a Fever": "Superhuman Hot Resistance (+5)",
+        "Runneth Cold": "Superhuman Cold Resistance (+5)",
+        "Runneth On Fumes": "Superhuman Stench Resistance (+5)",
+        "Runneth For Thy Life": "Superhuman Spooky Resistance (+5)",
+        "Runneth Into Thine Ex": "Superhuman Sleaze Resistance (+5)"
+    };
+
     // Parses a single <option> element into an Ingredient object.
     // Returns null if the text doesn't match the expected format.
     Cup13Parser.prototype.parseOption = function (optionElement) {
@@ -107,11 +123,22 @@ var Cup13 = Cup13 || {};
         if (runnethMatch) {
             var turns = parseInt(runnethMatch[1], 10);
             var runnethName = runnethMatch[2];
+            var details = Cup13Parser.RUNNETH_DETAILS[runnethName];
+
+            // Show what the effect actually does instead of just its
+            // name. Falls back to the raw "X turns of <name>" text for
+            // any Runneth effect not yet in RUNNETH_DETAILS (e.g. a
+            // new one added by a future IotM update), so nothing breaks.
+            var displayText = details ?
+                (turns + " turns of " + details) :
+                extraText;
+
             return {
                 type: "runneth",
                 turns: turns,
                 name: runnethName,
-                text: extraText
+                details: details || null,
+                text: displayText
             };
         }
 
