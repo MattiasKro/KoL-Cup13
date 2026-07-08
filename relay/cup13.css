@@ -47,7 +47,8 @@
 
 .cup13-table {
     margin-top: 10px;
-    max-width: 700px;
+    /* Width is set inline by cup13.ui.js to match the original
+       <select> elements, so no fixed/max width here. */
 }
 
 .cup13-table .tabulator-row {

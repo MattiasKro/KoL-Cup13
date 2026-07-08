@@ -381,11 +381,15 @@ var Cup13 = Cup13 || {};
             });
         });
 
-        // One option per unique Runneth effect name.
+        // One option per unique Runneth effect name. Labeled with the
+        // effect's actual details (same lookup used for the Effect
+        // column text) rather than just its name, so the filter list is
+        // just as informative as the table itself.
         Object.keys(runnethNames).sort().forEach(function (name) {
+            var details = Cup13Parser.RUNNETH_DETAILS[name];
             options.push({
                 id: "runneth-" + name,
-                label: name
+                label: details || name
             });
         });
 

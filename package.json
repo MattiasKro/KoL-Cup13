@@ -1,6 +1,5 @@
 {
     "scripts": {
-      "dev": "cp -R relay '¨/Library/Application Support/KoLmafia'"
+      "dev": "cp -R relay ~/Library/Application\\ Support/KoLmafia"
     }
   }
-  

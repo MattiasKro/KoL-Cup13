@@ -88,7 +88,7 @@ var Cup13 = Cup13 || {};
     // (whichitem3), so it appears in a sensible spot on the page without
     // disturbing the original form layout.
     Cup13UI.prototype.insertContainer = function () {
-        var lastSelect = this.selects[3] || this.selects[2] || this.selects[1];
+        var lastSelect = this.getReferenceSelect();
         if (lastSelect && lastSelect.parentNode) {
             lastSelect.parentNode.insertBefore(
                 this.container,
@@ -97,6 +97,25 @@ var Cup13 = Cup13 || {};
         } else {
             document.body.appendChild(this.container);
         }
+    };
+
+    // The original <select> we anchor our layout to - whichitem3 if
+    // present, falling back to whichitem2/1. Used both to decide where
+    // to insert the container and how wide to make the table.
+    Cup13UI.prototype.getReferenceSelect = function () {
+        return this.selects[3] || this.selects[2] || this.selects[1];
+    };
+
+    // Returns the on-page width (in pixels) of the reference <select>,
+    // so the table can be sized to match it instead of picking an
+    // arbitrary width of its own. Returns null if it can't be measured.
+    Cup13UI.prototype.getReferenceSelectWidth = function () {
+        var select = this.getReferenceSelect();
+        if (!select) {
+            return null;
+        }
+        var width = select.getBoundingClientRect().width;
+        return width > 0 ? width : null;
     };
 
     Cup13UI.prototype.buildSearchRow = function () {
@@ -250,6 +269,12 @@ var Cup13 = Cup13 || {};
     Cup13UI.prototype.buildTableContainer = function () {
         var tableDiv = document.createElement("div");
         tableDiv.className = "cup13-table";
+
+        var width = this.getReferenceSelectWidth();
+        if (width) {
+            tableDiv.style.width = width + "px";
+        }
+
         this.tableElement = tableDiv;
         return tableDiv;
     };
@@ -288,7 +313,7 @@ var Cup13 = Cup13 || {};
                 title: this.columnTitle("quantity", "Qty"),
                 field: "quantity",
                 headerSort: false,
-                width: 90,
+                width: 45,
                 hozAlign: "right",
                 headerClick: function () { self.handleSortClick("quantity"); }
             },
@@ -296,7 +321,7 @@ var Cup13 = Cup13 || {};
                 title: this.columnTitle("adv", "Adv"),
                 field: "adv",
                 headerSort: false,
-                width: 80,
+                width: 40,
                 hozAlign: "right",
                 headerClick: function () { self.handleSortClick("adv"); }
             },
